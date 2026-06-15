@@ -43,8 +43,17 @@
   // the widest reach, feet at the bottom extremes, hips/shoulders on the torso
   // centre line. Far better than fixed fractions for leaning / arms-out poses.
   function autoRig(mask, w, h) {
+    return fromPositions(snapAll(extremesPositions(mask, w, h), mask, w, h));
+  }
+
+  // Full 16-joint position map from silhouette extremes (no snapping).
+  function extremesPositions(mask, w, h) {
     const b = boundsOf(mask, w, h);
-    if (!b) return build({ minX: 0, minY: 0, w, h });
+    if (!b) {
+      const pos = {};
+      TEMPLATE.forEach((t) => (pos[t.name] = { x: t.fx * w, y: t.fy * h }));
+      return pos;
+    }
     const H = b.maxY - b.minY, W = b.maxX - b.minX;
     const occ = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
     const rowExtent = (y) => {
@@ -111,21 +120,27 @@
       leg_r_up: hip_r, leg_r_lo: limbMid(hip_r, lf), foot_r: lf,
       leg_l_up: hip_l, leg_l_lo: limbMid(hip_l, rf), foot_l: rf,
     };
+    return pos;
+  }
 
-    // Snap joints onto limb centerlines. Tips (hands/feet) move little so they
-    // stay at the extremities; mid-limb joints center more aggressively.
+  // Snap every joint onto its limb centerline. Tips (hands/feet) move little so
+  // they stay at the extremities; mid-limb joints center more aggressively.
+  function snapAll(pos, mask, w, h) {
     const D = distanceTransform(mask, w, h);
     const big = Math.min(w, h) * 0.06, small = Math.min(w, h) * 0.03;
     const moveBy = {
       hand_r: small, hand_l: small, foot_r: small, foot_l: small, head: big,
     };
+    const out = {};
     for (const name in pos) {
       const mm = moveBy[name] == null ? big : moveBy[name];
-      const s = snapToCenter(pos[name].x, pos[name].y, D, w, h, mm);
-      pos[name] = s;
+      out[name] = snapToCenter(pos[name].x, pos[name].y, D, w, h, mm);
     }
-    return assemble(pos);
+    return out;
   }
+
+  // Build a skeleton from a (complete) name→{x,y} position map.
+  function fromPositions(pos) { return assemble(pos); }
 
   // Two-pass chamfer distance transform: D[i] = distance from pixel i to the
   // nearest background pixel (0 outside the silhouette). The ridges of D are
@@ -238,5 +253,8 @@
     return worldRot;
   }
 
-  window.Skeleton = { TEMPLATE, build, autoRig, bones, solveFK, distanceTransform, snapToCenter };
+  window.Skeleton = {
+    TEMPLATE, build, autoRig, bones, solveFK, distanceTransform, snapToCenter,
+    extremesPositions, snapAll, fromPositions,
+  };
 })();

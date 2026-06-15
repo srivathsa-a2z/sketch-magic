@@ -21,7 +21,7 @@
     poly: [], mask: null, skel: null, mesh: null, binding: null, dist: null,
     color: '#ff5a5f', tol: 70, segTol: 32,
     anim: 'dance', scene: 'park', speed: 1, playing: true, soundOn: true,
-    adjustMode: 'outline', mirror: false,
+    adjustMode: 'outline', mirror: false, useAI: true, rigSource: '', useArap: true,
     renderer: null, raf: 0,
     drag: null, hover: -1, undo: [],
   };
@@ -57,8 +57,7 @@
   /* ---------------- load + auto-process ---------------- */
   function beginWithImage(img) {
     showBusy('Bringing it to life…');
-    // let the spinner paint before heavy sync work
-    setTimeout(() => {
+    setTimeout(async () => {
       const { w, h } = fitSize(img.naturalWidth || img.width, img.naturalHeight || img.height);
       S.image = img; S.imgW = w; S.imgH = h;
       editor.width = w; editor.height = h;
@@ -73,11 +72,8 @@
       const data = S.wctx.getImageData(0, 0, w, h).data;
       const cut = Segmentation.cutout(data, w, h, S.segTol);
       if (cut) {
-        S.poly = cut.poly;
-        S.mask = cut.mask;
-        S.skel = Skeleton.autoRig(cut.mask, w, h);
+        S.poly = cut.poly; S.mask = cut.mask;
       } else {
-        // Fall back to a box hugging the actual drawing (ink bounds).
         const b = Segmentation.contentBounds(data, w, h) ||
           { minX: w * 0.12, minY: h * 0.08, maxX: w * 0.88, maxY: h * 0.92 };
         S.poly = [
@@ -85,16 +81,77 @@
           { x: b.maxX, y: b.maxY }, { x: b.minX, y: b.maxY },
         ];
         S.mask = null;
-        S.skel = Skeleton.build(Geo.polyBounds(S.poly));
-        toast('Tap “Adjust” to fine-tune the outline');
+        toast('Tap “Fix-up” to refine the outline');
       }
       S.undo = []; S.dist = null;
+
+      await rigFromBest(S.useAI);
+
       welcome.classList.add('hidden');
       restartBtn.hidden = false;
       hideBusy();
       setView('play');   // straight to the magic — it's already animating
-      toast('✨ Tap 🎨 to colour it!');
     }, 30);
+  }
+
+  // Hybrid rig: best available joints over a silhouette-extremes base.
+  //   AI pose (if allowed & it loads) → medial-axis skeleton → extremes.
+  // Each source returns a PARTIAL map; we merge over the full base, then snap
+  // every joint to the limb centerline.
+  async function rigFromBest(allowAI) {
+    const w = S.imgW, h = S.imgH;
+    const mask = S.mask || polyMask();
+    const base = Skeleton.extremesPositions(mask, w, h);
+    let partial = null, src = 'shape';
+
+    if (allowAI && window.Pose) {
+      showBusy('Finding the body… 🤖');
+      partial = await safePose();
+      if (partial) { partial = validateJoints(partial, mask, w, h); src = 'AI'; }
+    }
+    if (!partial && window.Medial) {
+      showBusy('Tracing the body… ✏️');
+      try { partial = Medial.positions(mask, w, h); } catch (e) { partial = null; }
+      if (partial) src = 'skeleton';
+    }
+    const merged = Object.assign({}, base, partial || {});
+    S.skel = Skeleton.fromPositions(Skeleton.snapAll(merged, mask, w, h));
+    S.dist = null;
+    S.rigSource = src;
+    const label = src === 'AI' ? 'Rigged with AI ✨' : src === 'skeleton' ? 'Rigged from the shape ✏️' : 'Auto-rigged';
+    toast(label + ' — tap ✏️ Fix-up to tweak');
+  }
+
+  // Drop AI joints that land far outside the silhouette (a stray detection
+  // would otherwise drag a whole limb). Dropped joints fall back to the base.
+  function validateJoints(partial, mask, w, h) {
+    const R = Math.round(Math.min(w, h) * 0.12), R2 = R;
+    const ok = {};
+    for (const name in partial) {
+      const p = partial[name];
+      let x = Math.round(p.x), y = Math.round(p.y), found = false;
+      for (let r = 0; r <= R2 && !found; r++) {
+        for (let dy = -r; dy <= r && !found; dy++)
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && ny >= 0 && nx < w && ny < h && mask[ny * w + nx]) { found = true; break; }
+          }
+      }
+      if (found) ok[name] = p;
+    }
+    return ok;
+  }
+
+  // Run the pose model on the drawing rendered opaque on white.
+  async function safePose() {
+    try {
+      const c = document.createElement('canvas');
+      c.width = S.imgW; c.height = S.imgH;
+      const cx = c.getContext('2d');
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, S.imgW, S.imgH);
+      cx.drawImage(S.image, 0, 0, S.imgW, S.imgH);
+      return await Pose.estimate(c, 8000);
+    } catch (e) { return null; }
   }
 
   function loadFile(file) {
@@ -300,7 +357,11 @@
   });
 
   /* ---------------- play loop ---------------- */
-  function buildRig() { S.mesh = Mesh.build(S.poly); S.binding = Skinning.bind(S.mesh, S.skel); }
+  function buildRig() {
+    S.mesh = Mesh.build(S.poly);
+    S.binding = Skinning.bind(S.mesh, S.skel);   // gives per-vertex part/depth for layering
+    S.arap = ARAP.prepare(S.mesh, S.skel);       // ARAP solver state (handles = joints)
+  }
 
   function startPlay() {
     if (!S.renderer) S.renderer = Renderer.create(glCanvas);
@@ -314,22 +375,35 @@
   }
 
   function runLoop() {
-    const positions = new Float32Array(S.mesh.verts.length * 2);
+    const nv = S.mesh.verts.length;
+    const positions = new Float32Array(nv * 2);
+    const depths = new Float32Array(nv);
     const localRot = new Float32Array(S.skel.joints.length);
     const bounds = Geo.polyBounds(S.poly);
     let last = performance.now(), clock = 0;
     const W = S.imgW, H = S.imgH;
+    // part id → animation depth key
+    const PART_KEY = { 0: 'leg_r', 1: 'leg_l', 4: 'arm_r', 5: 'arm_l' };
 
     const frame = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       if (S.playing) clock += dt * S.speed;
 
-      const { rot, root } = Animations.sample(S.anim, clock, bounds.h);
+      const { rot, root, depth } = Animations.sample(S.anim, clock, bounds.h);
       localRot.fill(0);
       for (const n in rot) { const j = S.skel.byName[n]; if (j) localRot[j.index] = rot[n]; }
       Skeleton.solveFK(S.skel, localRot, root);
-      Skinning.deform(S.mesh, S.skel, S.binding, positions);
-      S.renderer.draw(positions);
+      if (S.useArap) ARAP.solve(S.arap, S.skel, positions);
+      else Skinning.deform(S.mesh, S.skel, S.binding, positions);
+
+      // per-vertex depth = static body-part base + dynamic limb swing
+      const base = S.binding.depth, part = S.binding.part, dd = depth || null;
+      for (let v = 0; v < nv; v++) {
+        let d = base[v];
+        if (dd) { const key = PART_KEY[part[v]]; if (key && dd[key]) d += dd[key]; }
+        depths[v] = d;
+      }
+      S.renderer.draw(positions, depths);
 
       // composite: scene → shadow → character
       sctx.clearRect(0, 0, W, H);
@@ -451,7 +525,7 @@
     return S.dist;
   }
 
-  function reDetect() {
+  async function reDetect() {
     // run the improved cut-out on the original photo (not the painted copy)
     const off = document.createElement('canvas');
     off.width = S.imgW; off.height = S.imgH;
@@ -463,7 +537,8 @@
       S.poly = cut.poly;
       S.mask = cut.mask;
       S.dist = null;
-      S.skel = Skeleton.autoRig(cut.mask, S.imgW, S.imgH);
+      await rigFromBest(S.useAI);
+      hideBusy();
       renderEditor();
       toast(`Outline: ${cut.poly.length} points`);
     } else {
@@ -491,23 +566,29 @@
       <div class="spacer"></div>
       <div class="row">
         <button class="chip ${S.mirror ? 'sel' : ''}" id="mirror">🪞 Mirror ${S.mirror ? 'on' : 'off'}</button>
-        <span class="ctl-hint" style="align-self:center">Tap a joint to see its name</span>
-      </div>`}
+        <button class="chip ${S.useAI ? 'sel' : ''}" id="aitoggle">🤖 AI ${S.useAI ? 'on' : 'off'}</button>
+        <button class="chip ${S.useArap ? 'sel' : ''}" id="araptoggle">✨ Smooth ${S.useArap ? 'on' : 'off'}</button>
+        <button class="btn small primary" id="rerig">↻ Auto-rig</button>
+      </div>
+      <p class="ctl-hint">Tap a joint to see its name. Rigged with: <b>${S.rigSource || 'shape'}</b>.</p>`}
       <div class="spacer"></div>
       <button class="btn primary" id="done">Done ✓</button>`;
     controls.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
       S.adjustMode = b.dataset.m; renderEditor(); buildControls();
     });
-    $('reset').onclick = () => {
-      S.skel = Skeleton.autoRig(polyMask(), S.imgW, S.imgH);
+    $('reset').onclick = async () => {
+      await rigFromBest(false);   // fast: medial/extremes, no AI round-trip
+      hideBusy();
       renderEditor();
-      toast('Skeleton re-fitted');
     };
     if (outlineMode) {
       $('sens').oninput = (e) => { S.segTol = +e.target.value; };
       $('redetect').onclick = reDetect;
     } else {
       $('mirror').onclick = () => { S.mirror = !S.mirror; buildControls(); toast(S.mirror ? '🪞 Mirror on' : 'Mirror off'); };
+      $('aitoggle').onclick = () => { S.useAI = !S.useAI; buildControls(); toast(S.useAI ? '🤖 AI rig on' : 'AI rig off'); };
+      $('araptoggle').onclick = () => { S.useArap = !S.useArap; buildControls(); toast(S.useArap ? '✨ Smooth (ARAP) on' : 'Smooth off'); };
+      $('rerig').onclick = async () => { await rigFromBest(S.useAI); hideBusy(); renderEditor(); buildControls(); };
     }
     $('done').onclick = () => setView('play');
   }
@@ -571,5 +652,8 @@
   }
 
   /* ---------------- boot ---------------- */
+  // Warm up the AI pose model during the welcome screen so the first snap is
+  // fast (and, if offline, it fails fast instead of stalling each load).
+  if (window.Pose && S.useAI) { try { Pose.preload(); } catch (e) {} }
   setView('snap');
 })();

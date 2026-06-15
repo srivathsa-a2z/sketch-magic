@@ -19,6 +19,7 @@
   function sample(id, t, scale) {
     const rot = {};
     const root = { x: 0, y: 0 };
+    let depth = null; // optional per-limb depth swing (front/back) for layering
 
     switch (id) {
       case 'idle': {
@@ -40,6 +41,7 @@
         rot.arm_l_up = 0.06 * Math.sin(t * 2);
         rot.torso = 0.02 * Math.sin(t * 2);
         rot.head = 0.05 * Math.sin(t * 2 + 1);
+        depth = { arm_r: 0.9 };           // waving arm in front
         break;
       }
       case 'walk': {
@@ -55,6 +57,11 @@
         rot.torso = 0.04 * Math.sin(w * 2);
         rot.head = 0.03 * Math.sin(w * 2);
         root.y = -Math.abs(Math.sin(w)) * 0.025 * scale;
+        // the forward-swinging arm/leg comes in front of the body
+        depth = {
+          leg_r: 0.5 * Math.sin(w), leg_l: 0.5 * Math.sin(w + PI),
+          arm_r: 0.6 * Math.sin(w + PI), arm_l: 0.6 * Math.sin(w),
+        };
         break;
       }
       case 'jump': {
@@ -67,6 +74,7 @@
         rot.arm_r_lo = -ph * 0.3; rot.arm_l_lo = ph * 0.3;
         rot.torso = -ph * 0.08;
         root.y = -ph * 0.32 * scale;
+        depth = { arm_r: 0.6 * ph, arm_l: 0.6 * ph };
         break;
       }
       case 'dance': {
@@ -78,6 +86,7 @@
         rot.leg_r_up = 0.12 * c; rot.leg_l_up = -0.12 * c;
         root.x = 0.04 * scale * a;
         root.y = -Math.abs(a) * 0.03 * scale;
+        depth = { arm_r: 0.6 * b, arm_l: -0.6 * b };
         break;
       }
       case 'wiggle': {
@@ -96,10 +105,14 @@
         rot.leg_l_lo = 0.2 * Math.sin(k - 1.4 + PI);
         root.x = 0.02 * scale * Math.sin(k);
         root.y = 0.02 * scale * Math.sin(k * 2);
+        depth = {
+          arm_r: 0.4 * Math.sin(k - 0.4), arm_l: 0.4 * Math.sin(k - 0.4 + PI),
+          leg_r: 0.3 * Math.sin(k - 1.0), leg_l: 0.3 * Math.sin(k - 1.0 + PI),
+        };
         break;
       }
     }
-    return { rot, root };
+    return { rot, root, depth };
   }
 
   window.Animations = { list, sample };

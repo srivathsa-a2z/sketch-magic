@@ -4,6 +4,7 @@
   const VERT = `
     attribute vec2 aPos;
     attribute vec2 aUV;
+    attribute float aDepth;
     uniform vec2 uSize;
     uniform vec2 uScale;
     uniform vec2 uOffset;
@@ -12,7 +13,8 @@
       vec2 p = aPos * uScale + uOffset;
       vec2 c = p / uSize * 2.0 - 1.0;
       c.y = -c.y;
-      gl_Position = vec4(c, 0.0, 1.0);
+      // larger aDepth → nearer the viewer (more negative z passes the depth test)
+      gl_Position = vec4(c, -aDepth * 0.1, 1.0);
       vUV = aUV;
     }`;
 
@@ -21,7 +23,9 @@
     varying vec2 vUV;
     uniform sampler2D uTex;
     void main() {
-      gl_FragColor = texture2D(uTex, vUV);
+      vec4 col = texture2D(uTex, vUV);
+      if (col.a < 0.35) discard;   // transparent texels must not occlude limbs
+      gl_FragColor = col;
     }`;
 
   function compile(gl, type, src) {
@@ -48,6 +52,7 @@
 
     const aPos = gl.getAttribLocation(prog, 'aPos');
     const aUV = gl.getAttribLocation(prog, 'aUV');
+    const aDepth = gl.getAttribLocation(prog, 'aDepth');
     const uSize = gl.getUniformLocation(prog, 'uSize');
     const uScale = gl.getUniformLocation(prog, 'uScale');
     const uOffset = gl.getUniformLocation(prog, 'uOffset');
@@ -55,11 +60,14 @@
 
     const posBuf = gl.createBuffer();
     const uvBuf = gl.createBuffer();
+    const depthBuf = gl.createBuffer();
     const idxBuf = gl.createBuffer();
     const tex = gl.createTexture();
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
 
     const state = {
       count: 0, w: canvas.width, h: canvas.height,
@@ -105,10 +113,10 @@
       state.w = w; state.h = h;
     }
 
-    function draw(positions) {
+    function draw(positions, depths) {
       gl.viewport(0, 0, state.w, state.h);
       gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       if (!state.count) return;
 
       gl.useProgram(prog);
@@ -120,6 +128,16 @@
       gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
       gl.enableVertexAttribArray(aPos);
       gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      if (depths) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, depthBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, depths, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(aDepth);
+        gl.vertexAttribPointer(aDepth, 1, gl.FLOAT, false, 0, 0);
+      } else if (aDepth >= 0) {
+        gl.disableVertexAttribArray(aDepth);
+        gl.vertexAttrib1f(aDepth, 2.0);
+      }
 
       gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf);
       gl.enableVertexAttribArray(aUV);

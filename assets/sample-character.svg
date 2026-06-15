@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <!-- opaque light background so auto-outline can flood it away -->
+  <rect width="400" height="600" fill="#ffffff"/>
+  <g stroke="#1c1c1c" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <!-- head -->
+    <circle cx="200" cy="80" r="52" fill="#ffd9a0"/>
+    <!-- torso -->
+    <path d="M168 130 L232 130 L246 320 L154 320 Z" fill="#4f7cff"/>
+    <!-- left arm (viewer left) -->
+    <path d="M170 150 L120 200 L96 300 L120 312 L150 215 L186 168 Z" fill="#ffd9a0"/>
+    <!-- right arm -->
+    <path d="M230 150 L280 200 L304 300 L280 312 L250 215 L214 168 Z" fill="#ffd9a0"/>
+    <!-- left leg -->
+    <path d="M158 318 L150 470 L138 560 L172 560 L186 470 L196 322 Z" fill="#2c3550"/>
+    <!-- right leg -->
+    <path d="M242 318 L250 470 L262 560 L228 560 L214 470 L204 322 Z" fill="#2c3550"/>
+    <!-- feet -->
+    <ellipse cx="150" cy="566" rx="30" ry="14" fill="#1c1c1c"/>
+    <ellipse cx="250" cy="566" rx="30" ry="14" fill="#1c1c1c"/>
+  </g>
+  <!-- face -->
+  <g fill="#1c1c1c">
+    <circle cx="182" cy="74" r="6"/>
+    <circle cx="218" cy="74" r="6"/>
+  </g>
+  <path d="M180 100 Q200 116 220 100" stroke="#1c1c1c" stroke-width="5" fill="none" stroke-linecap="round"/>
+</svg>

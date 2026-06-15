@@ -1,0 +1,8 @@
+# Local tooling — not needed to run or host the app
+.claude/
+test/
+
+# OS / editor junk
+Thumbs.db
+.DS_Store
+*.log

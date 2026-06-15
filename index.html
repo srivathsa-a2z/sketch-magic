@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#5b8cff" />
+  <title>Sketch Magic — make your drawing come alive!</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="appbar">
+      <div class="brand">✨ Sketch Magic</div>
+      <button id="restart" class="icon-btn" hidden title="New drawing">🔄</button>
+    </header>
+
+    <div class="stepper" id="stepper">
+      <div class="dot" data-step="snap"><b>1</b> 📷 Snap</div>
+      <div class="dot" data-step="play"><b>2</b> ✨ Play</div>
+    </div>
+
+    <main class="stage" id="stage">
+      <canvas id="editor"></canvas>
+      <canvas id="stage2d" class="hidden"></canvas>
+      <canvas id="gl" class="hidden"></canvas>
+
+      <div id="welcome" class="welcome">
+        <div class="welcome-art">🎨➡️🕺</div>
+        <h1>Make your drawing<br />come alive!</h1>
+        <p>Draw a person, snap a photo, and watch it dance.</p>
+        <div class="welcome-btns">
+          <button class="big-btn primary" id="btnCamera">📷 Take a photo</button>
+          <button class="big-btn" id="btnGallery">🖼️ Choose picture</button>
+          <button class="big-btn ghost" id="btnSample">✨ Try an example</button>
+        </div>
+        <p class="tip">Tip: a single character on white paper works best.</p>
+      </div>
+
+      <div id="busy" class="busy hidden">
+        <div class="spinner"></div>
+        <span id="busyMsg">Bringing it to life…</span>
+      </div>
+
+      <div id="toast" class="toast hidden"></div>
+    </main>
+
+    <section class="controls" id="controls"></section>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*" hidden />
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
+
+  <script src="src/util.js"></script>
+  <script src="src/segmentation.js"></script>
+  <script src="src/skeleton.js"></script>
+  <script src="src/mesh.js"></script>
+  <script src="src/skinning.js"></script>
+  <script src="src/animations.js"></script>
+  <script src="src/paint.js"></script>
+  <script src="src/scenes.js"></script>
+  <script src="src/audio.js"></script>
+  <script src="src/recorder.js"></script>
+  <script src="src/gif.js"></script>
+  <script src="src/renderer.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

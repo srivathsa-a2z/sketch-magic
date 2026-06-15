@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="600" viewBox="0 0 500 600">
+  <rect width="500" height="600" fill="#ffffff"/>
+  <g fill="none" stroke="#111111" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <!-- head -->
+    <circle cx="250" cy="90" r="46"/>
+    <!-- spine (leaning) -->
+    <path d="M250 136 L240 330"/>
+    <!-- left arm down -->
+    <path d="M250 180 L175 300"/>
+    <!-- right arm pointing out -->
+    <path d="M250 185 L360 250"/>
+    <!-- left leg -->
+    <path d="M240 330 L200 500"/>
+    <!-- right leg -->
+    <path d="M240 330 L290 500"/>
+  </g>
+</svg>
